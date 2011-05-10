@@ -204,7 +204,7 @@ void streamOn(HWND hWnd)
 
 void streamOff(HWND hWnd)
 {
-	char buff[64];
+	//char buff[64];
 
 	if (!cam)
 		return;
@@ -214,8 +214,8 @@ void streamOff(HWND hWnd)
 		return;
 	}
 
-	sprintf_s(buff, sizeof(buff), "Received %d images", cam->_imageCount);
-	MessageBox(hWnd, buff, "Stream Off", MB_OK);
+	//sprintf_s(buff, sizeof(buff), "Received %d images", cam->_imageCount);
+	//MessageBox(hWnd, buff, "Stream Off", MB_OK);
 
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_STREAMON, MF_ENABLED);
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_STREAMOFF, MF_GRAYED);
