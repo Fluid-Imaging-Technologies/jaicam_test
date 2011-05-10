@@ -13,7 +13,9 @@ CameraContext::CameraContext()
 	initializeCameraDB();
 
 	_camera_id = CAMERA_TYPE_JAI_CB080_GE;
-	_camera_val[CAMERA_GAIN] = 153;
+
+	_camera_val[CAMERA_SHUTTER] = 200;
+	_camera_val[CAMERA_GAIN] = 0;
 }
 
 CameraContext::~CameraContext() 

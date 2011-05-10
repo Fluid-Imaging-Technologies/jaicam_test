@@ -367,8 +367,8 @@ void CameraType::initialize(int id)
 					BAYER_PATTERN_RG,
 					30);
 				
-		setParameters(CAMERA_SHUTTER, true, 0, 1, 30, 5);
-		setParameters(CAMERA_GAIN, true, 0, 1, 5000, 300);
+		setParameters(CAMERA_SHUTTER, true, 0, 2, 790, 100);
+		setParameters(CAMERA_GAIN, true, 0, -89, 676, 0);
 		break;
 
 #if 0

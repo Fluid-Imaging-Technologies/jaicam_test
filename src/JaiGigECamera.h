@@ -26,6 +26,12 @@ public:
 
 	virtual bool applySettings(Context *ctx);
 
+	virtual bool getGainValue(long *current, long *min, long *max);
+	virtual bool setGainValue(long val);
+
+	virtual bool getShutterValue(long *current, long *min, long *max);
+	virtual bool setShutterValue(long val);
+
 	int _imageCount;
 
 private:
@@ -42,4 +48,6 @@ private:
 	THRD_HANDLE _hStreamThread;
 	VIEW_HANDLE _hView;
 	bool _imageReady;
+	NODE_HANDLE _hGainNode;
+    NODE_HANDLE _hExposureNode;  
 };

@@ -11,13 +11,14 @@
 
 #include <Jai_Factory_Dynamic.h>
 
-#define NODE_NAME_WIDTH     "Width"
-#define NODE_NAME_HEIGHT    "Height"
+#define NODE_NAME_WIDTH         "Width"
+#define NODE_NAME_HEIGHT        "Height"
 #define NODE_NAME_PIXELFORMAT   "PixelFormat"
-#define NODE_NAME_GAIN      "GainRaw"
-#define NODE_NAME_ACQSTART  "AcquisitionStart"
-#define NODE_NAME_ACQSTOP   "AcquisitionStop"
-
+#define NODE_NAME_GAIN          "GainRaw"
+#define NODE_NAME_EXPOSURE      "ExposureTimeRaw"
+#define NODE_NAME_ACQSTART      "AcquisitionStart"
+#define NODE_NAME_ACQSTOP       "AcquisitionStop"
+#define NODE_NAME_EXPOSURE_MODE "ExposureMode"
 
 JaiGigECamera::JaiGigECamera(int engNum) : BaseCamera(engNum)
 {
@@ -27,6 +28,8 @@ JaiGigECamera::JaiGigECamera(int engNum) : BaseCamera(engNum)
 	_hStreamThread = 0;
 	_hView = 0;
 	_imageReady = false;
+	_hGainNode = 0;
+    _hExposureNode = 0;
 
 	InitializeCriticalSection(&_csCopyImage);
 }
@@ -179,7 +182,6 @@ bool JaiGigECamera::openViewWindow()
 	}
 
 	return true;
-
 }
 
 bool JaiGigECamera::startImageGrabThread() 
@@ -216,7 +218,7 @@ bool JaiGigECamera::startImageGrabThread()
         return false;
     }
 
-	result = J_Camera_ExecuteCommand(_hCamera, "AcquisitionStart");
+	result = J_Camera_ExecuteCommand(_hCamera, NODE_NAME_ACQSTART);
    
 	if (result != J_ST_SUCCESS) {
         MessageBox(0, "Could not Start Acquisition!", "Error", MB_OK);
@@ -231,14 +233,14 @@ bool JaiGigECamera::stopImageGrabThread()
 { 
     J_STATUS_TYPE result;
 
-    if (_hCamera) {
-        result = J_Camera_ExecuteCommand(_hCamera, "AcquisitionStop");
-        
-		if (result != J_ST_SUCCESS)
-            MessageBox(0, "Could not Stop Acquisition thread!", "Error", MB_OK);
-    }
-
     if (_hStreamThread) {
+		if (_hCamera) {
+			result = J_Camera_ExecuteCommand(_hCamera, NODE_NAME_ACQSTOP);
+        
+			if (result != J_ST_SUCCESS)
+				MessageBox(0, "Could not Stop Acquisition thread!", "Error", MB_OK);
+		}
+
         result = J_Image_CloseStream(_hStreamThread);
 
         if (result != J_ST_SUCCESS)
@@ -287,7 +289,7 @@ bool JaiGigECamera::applyNonConfigurableSettings()
 	int w, h;
 
 
-	result = J_Camera_GetNodeByName(_hCamera, "PixelFormat", &hNode);
+	result = J_Camera_GetNodeByName(_hCamera, NODE_NAME_PIXELFORMAT, &hNode);
 	if (result != J_ST_SUCCESS) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 				"Failed to get PixelFormat node", _TRUNCATE);
@@ -311,7 +313,7 @@ bool JaiGigECamera::applyNonConfigurableSettings()
 	}
 
 	// make sure width and height are what we expect
-	result = J_Camera_GetValueInt64(_hCamera, "Width", &val);
+	result = J_Camera_GetValueInt64(_hCamera, NODE_NAME_WIDTH, &val);
     if (result != J_ST_SUCCESS) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 				"Failed to get camera actual width", _TRUNCATE);
@@ -320,7 +322,7 @@ bool JaiGigECamera::applyNonConfigurableSettings()
 
 	w = (int) val;
 
-    result = J_Camera_GetValueInt64(_hCamera, "Height", &val);
+    result = J_Camera_GetValueInt64(_hCamera, NODE_NAME_HEIGHT, &val);
     if (result != J_ST_SUCCESS) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 				"Failed to get camera actual height", _TRUNCATE);
@@ -341,16 +343,188 @@ bool JaiGigECamera::applyNonConfigurableSettings()
 
 bool JaiGigECamera::applySettings(Context *ctx)
 {
+	long current, min, max;
+
+	if (!getShutterValue(&current, &min, &max)) {
+		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
+				"Failed to read current shutter", _TRUNCATE);
+
+		return false;
+	}
+	
+	if (!setShutterValue(ctx->_camera._camera_val[CAMERA_SHUTTER])) {
+		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
+				"Failed to set shutter", _TRUNCATE);
+
+		return false;
+	}
+
+	if (!getGainValue(&current, &min, &max)) {
+		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
+				"Failed to read current gain", _TRUNCATE);
+
+		return false;
+	}
+	
+	if (!setGainValue(ctx->_camera._camera_val[CAMERA_GAIN])) {
+		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
+				"Failed to set gain", _TRUNCATE);
+
+		return false;
+	}
+
+	return true;
+}
+
+bool JaiGigECamera::getGainValue(long *current, long *min, long *max)
+{
 	J_STATUS_TYPE result;
 	int64_t val;
 
-	val = ctx->_camera._camera_val[CAMERA_GAIN];
+	if (!_hGainNode) {
+		result = J_Camera_GetNodeByName(_hCamera, NODE_NAME_GAIN, &_hGainNode);
 
-	result = J_Camera_SetValueInt64(_hCamera, "GainRaw", val);
-	if (result != J_ST_SUCCESS) {
-			strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
-					"Failed to set GainRaw", _TRUNCATE);
-			return false;
+		if (result != J_ST_SUCCESS)
+			return false;			
+	}
+
+	if (current) {
+		if (isValidCacheValue(CAMERA_GAIN)) {
+			*current = getCacheValue(CAMERA_GAIN);
+		}
+		else {
+			result = J_Node_GetValueInt64(_hGainNode, TRUE, &val);
+
+			if (result != J_ST_SUCCESS)
+				return false;
+
+			*current = (long) val;
+			setCacheValue(CAMERA_GAIN, *current);
+		}
+	}
+
+	if (min) {
+		if (isValidCacheValue(CACHE_CAMERA_GAIN_MIN)) {
+			*min = getCacheValue(CACHE_CAMERA_GAIN_MIN);
+		}
+		else {
+			result = J_Node_GetMinInt64(_hGainNode, &val);
+
+			if (result != J_ST_SUCCESS)
+				return false;
+
+			*min = (long) val;
+			setCacheValue(CACHE_CAMERA_GAIN_MIN, *min);
+		}
+	}
+
+	if (max) {
+		if (isValidCacheValue(CACHE_CAMERA_GAIN_MAX)) {
+			*max = getCacheValue(CACHE_CAMERA_GAIN_MAX);
+		}
+		else {
+			result = J_Node_GetMaxInt64(_hGainNode, &val);
+
+			if (result != J_ST_SUCCESS)
+				return false;
+
+			*max = (long) val;
+			setCacheValue(CACHE_CAMERA_GAIN_MAX, *max);
+		}
+	}
+
+	return true;
+}
+
+bool JaiGigECamera::setGainValue(long val)
+{
+	J_STATUS_TYPE result;
+	int64_t val64 = val;
+
+	if (!isValidCacheValue(CAMERA_GAIN) || val != getCacheValue(CAMERA_GAIN)) {
+		result = J_Camera_SetValueInt64(_hCamera, NODE_NAME_GAIN, val64);
+
+		if (result != J_ST_SUCCESS)
+				return false;
+		else
+			setCacheValue(CAMERA_GAIN, val);
+	}
+
+	return true;
+}
+
+bool JaiGigECamera::getShutterValue(long *current, long *min, long *max)
+{
+	J_STATUS_TYPE result;
+	int64_t val;
+
+	if (!_hExposureNode) {
+		result = J_Camera_GetNodeByName(_hCamera, NODE_NAME_EXPOSURE, &_hExposureNode);
+
+		if (result != J_ST_SUCCESS)
+			return false;			
+	}
+
+	if (current) {
+		if (isValidCacheValue(CAMERA_SHUTTER)) {
+			*current = getCacheValue(CAMERA_SHUTTER);
+		}
+		else {
+			result = J_Node_GetValueInt64(_hExposureNode, TRUE, &val);
+
+			if (result != J_ST_SUCCESS)
+				return false;
+
+			*current = (long) val;
+			setCacheValue(CAMERA_SHUTTER, *current);
+		}
+	}
+
+	if (min) {
+		if (isValidCacheValue(CACHE_CAMERA_SHUTTER_MIN)) {
+			*min = getCacheValue(CACHE_CAMERA_SHUTTER_MIN);
+		}
+		else {
+			result = J_Node_GetMinInt64(_hExposureNode, &val);
+
+			if (result != J_ST_SUCCESS)
+				return false;
+
+			*min = (long) val;
+			setCacheValue(CACHE_CAMERA_SHUTTER_MIN, *min);
+		}
+	}
+
+	if (max) {
+		if (isValidCacheValue(CACHE_CAMERA_SHUTTER_MAX)) {
+			*max = getCacheValue(CACHE_CAMERA_SHUTTER_MAX);
+		}
+		else {
+			result = J_Node_GetMaxInt64(_hExposureNode, &val);
+
+			if (result != J_ST_SUCCESS)
+				return false;
+
+			*max = (long) val;
+			setCacheValue(CACHE_CAMERA_SHUTTER_MAX, *max);
+		}
+	}
+
+	return true;
+}
+
+bool JaiGigECamera::setShutterValue(long val)
+{
+	J_STATUS_TYPE result;
+	int64_t val64 = val;
+
+	if (!isValidCacheValue(CAMERA_SHUTTER) || val != getCacheValue(CAMERA_SHUTTER)) {
+		result = J_Camera_SetValueInt64(_hCamera, NODE_NAME_EXPOSURE, val64);
+
+		if (result != J_ST_SUCCESS)
+				return false;
+		else
+			setCacheValue(CAMERA_SHUTTER, val);
 	}
 
 	return true;
