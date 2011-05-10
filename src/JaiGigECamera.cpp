@@ -11,6 +11,10 @@
 
 #include <Jai_Factory_Dynamic.h>
 
+#define BAYER_GAIN_RED 0
+#define BAYER_GAIN_GREEN 1
+#define BAYER_GAIN_BLUE 2
+
 #define NODE_NAME_WIDTH         "Width"
 #define NODE_NAME_HEIGHT        "Height"
 #define NODE_NAME_PIXELFORMAT   "PixelFormat"
@@ -30,6 +34,9 @@ JaiGigECamera::JaiGigECamera(int engNum) : BaseCamera(engNum)
 	_imageReady = false;
 	_hGainNode = 0;
     _hExposureNode = 0;
+	_bayerGain[BAYER_GAIN_RED] = 0x01000;
+	_bayerGain[BAYER_GAIN_GREEN] = 0x01000;
+	_bayerGain[BAYER_GAIN_BLUE] = 0x01000;
 
 	InitializeCriticalSection(&_csCopyImage);
 }
@@ -154,12 +161,33 @@ bool JaiGigECamera::freeCamera()
 	return true;
 }
 
-void JaiGigECamera::imageStreamCallback(J_tIMAGE_INFO * pAqImageInfo)
+void JaiGigECamera::imageStreamCallback(J_tIMAGE_INFO *pAqImageInfo)
 {
+	J_STATUS_TYPE result;
+	J_tIMAGE_INFO rgbBuff;
+
     ++_imageCount;
 
-	if (_hView)
-		J_Image_ShowImage(_hView, pAqImageInfo);
+	if (J_ST_SUCCESS == J_Image_Malloc(pAqImageInfo, &rgbBuff)) {
+		result = J_Image_FromRawToImageEx(pAqImageInfo, 
+											&rgbBuff,
+											BAYER_EXTEND,
+											_bayerGain[BAYER_GAIN_RED], 
+											_bayerGain[BAYER_GAIN_GREEN], 
+											_bayerGain[BAYER_GAIN_BLUE]);
+
+
+		if (result == J_ST_SUCCESS) {
+			if (_hView)
+				J_Image_ShowImage(_hView, &rgbBuff);
+		}
+		
+		J_Image_Free(&rgbBuff);
+	}
+	else {
+		if (_hView)
+			J_Image_ShowImage(_hView, pAqImageInfo);	
+	}
 }
 
 bool JaiGigECamera::openViewWindow()
@@ -341,9 +369,36 @@ bool JaiGigECamera::applyNonConfigurableSettings()
 	return true;
 }
 
+uint32_t JaiGigECamera::convertBayerGainToJaiFormat(double bayerGain)
+{
+	bayerGain *= 4096.0;
+
+	// 8X
+	if (bayerGain > 131072.0)
+		return 131072;
+	
+	// ~0.01X
+	if (bayerGain < 40.0)
+		return 40;
+	
+	return (uint32_t) bayerGain;
+}
+
 bool JaiGigECamera::applySettings(Context *ctx)
 {
 	long current, min, max;
+	CameraContext *cc = &ctx->_camera;
+	
+	
+	if (cc->_bayerCoefficients[BAYER_GAIN_RED] > 0.0)
+		_bayerGain[BAYER_GAIN_RED] = convertBayerGainToJaiFormat(cc->_bayerCoefficients[BAYER_GAIN_RED]);
+
+	if (cc->_bayerCoefficients[BAYER_GAIN_GREEN] > 0.0)
+		_bayerGain[BAYER_GAIN_GREEN] = convertBayerGainToJaiFormat(cc->_bayerCoefficients[BAYER_GAIN_GREEN]);
+
+	if (cc->_bayerCoefficients[BAYER_GAIN_BLUE] > 0.0)
+		_bayerGain[BAYER_GAIN_BLUE] = convertBayerGainToJaiFormat(cc->_bayerCoefficients[BAYER_GAIN_BLUE]);
+
 
 	if (!getShutterValue(&current, &min, &max)) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
@@ -352,7 +407,7 @@ bool JaiGigECamera::applySettings(Context *ctx)
 		return false;
 	}
 	
-	if (!setShutterValue(ctx->_camera._camera_val[CAMERA_SHUTTER])) {
+	if (!setShutterValue(cc->_camera_val[CAMERA_SHUTTER])) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 				"Failed to set shutter", _TRUNCATE);
 
@@ -366,7 +421,7 @@ bool JaiGigECamera::applySettings(Context *ctx)
 		return false;
 	}
 	
-	if (!setGainValue(ctx->_camera._camera_val[CAMERA_GAIN])) {
+	if (!setGainValue(cc->_camera_val[CAMERA_GAIN])) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 				"Failed to set gain", _TRUNCATE);
 

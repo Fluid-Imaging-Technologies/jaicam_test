@@ -14,8 +14,12 @@ CameraContext::CameraContext()
 
 	_camera_id = CAMERA_TYPE_JAI_CB080_GE;
 
-	_camera_val[CAMERA_SHUTTER] = 200;
+	_camera_val[CAMERA_SHUTTER] = 140;
 	_camera_val[CAMERA_GAIN] = 0;
+
+	 _bayerCoefficients[0] = 1.25;
+	 _bayerCoefficients[1] = 1.0;
+	 _bayerCoefficients[2] = 1.25;
 }
 
 CameraContext::~CameraContext() 

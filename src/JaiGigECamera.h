@@ -37,6 +37,7 @@ public:
 private:
 	bool applyNonConfigurableSettings();
 	void imageStreamCallback(J_tIMAGE_INFO * pAqImageInfo);
+	uint32_t convertBayerGainToJaiFormat(double bayerGain);
 
 	// for testing
 	bool openViewWindow();
@@ -48,6 +49,8 @@ private:
 	THRD_HANDLE _hStreamThread;
 	VIEW_HANDLE _hView;
 	bool _imageReady;
+	uint32_t _bayerGain[3];
+	J_tIMAGE_INFO _rgbBuff;
 	NODE_HANDLE _hGainNode;
     NODE_HANDLE _hExposureNode;  
 };
