@@ -88,6 +88,7 @@ bool JaiGigECamera::initialize(Context *ctx, HANDLE hStopEvent)
 		if (result != J_ST_SUCCESS) {
 			strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 					"Failed to open factory", _TRUNCATE);
+			_cameraInitErrors++;
 			return false;
 		}
 	}
@@ -96,6 +97,7 @@ bool JaiGigECamera::initialize(Context *ctx, HANDLE hStopEvent)
 	if (result != J_ST_SUCCESS) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff), 
 				"Failed to update camera list", _TRUNCATE);
+		_cameraInitErrors++;
 		return false;
 	}
 
@@ -103,12 +105,14 @@ bool JaiGigECamera::initialize(Context *ctx, HANDLE hStopEvent)
 	if (result != J_ST_SUCCESS) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff),
 				"Failed to get number of cameras", _TRUNCATE);
+		_cameraInitErrors++;
 		return false;
 	}
 
 	if (deviceCount == 0) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff), 
 				"No cameras found", _TRUNCATE);
+		_cameraInitErrors++;
 		return false;
 	}
 
@@ -120,6 +124,7 @@ bool JaiGigECamera::initialize(Context *ctx, HANDLE hStopEvent)
 		if (result != J_ST_SUCCESS) {
 			strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff), 
 					"Failed to get camera id", _TRUNCATE);
+			_cameraInitErrors++;
 			return false;
 		}
 
@@ -130,6 +135,7 @@ bool JaiGigECamera::initialize(Context *ctx, HANDLE hStopEvent)
 	if (strlen(_jCameraId) < 0) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff), 
 				"No cameras using the Filter Driver", _TRUNCATE);
+		_cameraInitErrors++;
 		return false;
 	}
 
@@ -137,14 +143,19 @@ bool JaiGigECamera::initialize(Context *ctx, HANDLE hStopEvent)
 	if (result != J_ST_SUCCESS) {
 		strncpy_s(_cameraInitErrorBuff, sizeof(_cameraInitErrorBuff), 
 				"Failed to open camera", _TRUNCATE);
+		_cameraInitErrors++;
 		return false;
 	}
 
-	if (!applyNonConfigurableSettings())
+	if (!applyNonConfigurableSettings()) {
+		_cameraInitErrors++;
 		return false;
+	}
 
-	if (!applySettings(ctx))
+	if (!applySettings(ctx)) {
+		_cameraInitErrors++;
 		return false;
+	}
 
 	_initialized = true;
 
@@ -451,8 +462,7 @@ bool JaiGigECamera::applySettings(Context *ctx)
 {
 	long current, min, max;
 	CameraContext *cc = &ctx->_camera;
-	
-	
+		
 	if (cc->_bayerCoefficients[BAYER_GAIN_RED] > 0.0)
 		_bayerGain[BAYER_GAIN_RED] = convertBayerGainToJaiFormat(cc->_bayerCoefficients[BAYER_GAIN_RED]);
 
@@ -646,6 +656,53 @@ bool JaiGigECamera::setShutterValue(long val)
 	}
 
 	return true;
+}
+
+StringList* JaiGigECamera::getFeatureList(HWND hWnd)
+{
+	J_STATUS_TYPE result;
+	uint32_t count, size, i;
+	NODE_HANDLE hNode;
+	char name[256];
+	StringList *list;
+
+	if (!_hCamera)
+		return NULL;
+
+	result = J_Camera_GetNumOfNodes(_hCamera, &count);
+	if (result != J_ST_SUCCESS)
+		return NULL;
+
+	if (count < 1)
+		return NULL;
+
+	list = new StringList();
+	if (!list)
+		return NULL;
+
+	for (i = 0; i < count; i++) {
+		result = J_Camera_GetNodeByIndex(_hCamera, i, &hNode);
+		if (result != J_ST_SUCCESS) {
+			MessageBox(hWnd, "Error geting node handle", "Error", MB_OK);
+			break;
+		}
+
+		memset(name, 0, sizeof(name));
+		size = sizeof(name);
+
+		result = J_Node_GetName(hNode, name, &size, 0);
+		if (result != J_ST_SUCCESS) {
+			MessageBox(hWnd, "Error getting node name", "Error", MB_OK);
+			break;
+		}
+
+		if (!list->addString(name)) {
+			MessageBox(hWnd, "Error adding node name string to list", "Error", MB_OK);
+			break;
+		}
+	}
+
+	return list;
 }
 
 /*

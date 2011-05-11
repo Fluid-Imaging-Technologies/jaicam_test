@@ -19,6 +19,7 @@ void freeCamera(HWND hWnd);
 void initializeCamera(HWND hWnd);
 void streamOn(HWND hWnd);
 void streamOff(HWND hWnd);
+void dumpFeatureList(HWND hWnd);
 
 HINSTANCE ghInstance;
 char szMainWinClass[] = "jai_test_winclass";
@@ -75,7 +76,7 @@ bool InitApplication(HINSTANCE hInstance, int cmdShow)
 	hWnd = CreateWindow((LPCSTR)szMainWinClass,
 						"JAI Camera Test",
 						WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
-						CW_USEDEFAULT, CW_USEDEFAULT, 400, 200,
+						CW_USEDEFAULT, CW_USEDEFAULT, 400, 100,
 						NULL, NULL, hInstance, NULL);
 
 	if (!hWnd)
@@ -138,6 +139,10 @@ void wmCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
 		streamOff(hWnd);
 		break;
 
+	case ID_CAMERA_FEATURELIST:
+		dumpFeatureList(hWnd);
+		break;
+
 	case ID_FILE_EXIT:
 		PostMessage(hWnd, WM_CLOSE, 0, 0);
 		break;
@@ -147,8 +152,67 @@ void wmCommand(HWND hWnd, WPARAM wParam, LPARAM lParam)
 	}
 }
 
+void dumpFeatureList(HWND hWnd)
+{
+	int size, i;
+	const char *s;
+	char *buff;
+	HANDLE fh;
+	unsigned long byteswritten;
+
+	StringList *list = cam->getFeatureList(hWnd);
+
+	if (!list)
+		return;
+
+	size = 64;
+
+	for (i = 0; i < list->getNumStrings(); i++) {
+		s = list->getString(i);
+
+		if (s)
+			size += 4 + strlen(s);
+	}
+
+	buff = new char[size];
+
+	if (!buff) {
+		delete list;
+		return;
+	}
+
+	memset(buff, 0, size);
+
+	for (i = 0; i < list->getNumStrings(); i++) {
+		s = list->getString(i);
+
+		if (s && strlen(s) > 0) {
+			strcat(buff, s);
+			strcat(buff, "\r\n");
+		}
+	}
+	
+	fh = CreateFile("./featurelist.txt",
+					GENERIC_WRITE,
+					NULL,
+					NULL,
+					CREATE_ALWAYS,
+					FILE_ATTRIBUTE_NORMAL,
+					NULL);
+
+	if (fh) {
+		WriteFile(fh, buff, strlen(buff), &byteswritten, NULL);
+		CloseHandle(fh);
+	}
+	
+	delete [] buff;
+	delete list;
+}
+
 void initializeCamera(HWND hWnd)
 {
+	char *buff;
+
 	if (cam)
 		return;
 
@@ -165,7 +229,18 @@ void initializeCamera(HWND hWnd)
 	}
 	
 	if (!cam->initialize(&ctx, hStopEvent)) {
-		MessageBox(hWnd, "Camera initialization failed", "Error", MB_OK);
+		buff = new char[2048];
+
+		if (buff) {
+			memset(buff, 0, 2048);
+			cam->getInitErrors(buff, 2048);
+			MessageBox(hWnd, buff, "Camera Init Fail", MB_OK);
+			delete [] buff;
+		}
+		else {
+			MessageBox(hWnd, "NOMEM", "Camera Init Fail", MB_OK);
+		}
+
 		return;
 	}
 
@@ -173,6 +248,7 @@ void initializeCamera(HWND hWnd)
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_FREE, MF_ENABLED); 
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_STREAMON, MF_ENABLED);
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_STREAMOFF, MF_GRAYED);
+	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_FEATURELIST, MF_ENABLED);
 }
 
 void freeCamera(HWND hWnd)
@@ -191,6 +267,7 @@ void freeCamera(HWND hWnd)
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_FREE, MF_GRAYED); 
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_STREAMON, MF_GRAYED);
 	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_STREAMOFF, MF_GRAYED);
+	EnableMenuItem(GetMenu(hWnd), ID_CAMERA_FEATURELIST, MF_GRAYED);
 }
 
 void streamOn(HWND hWnd)

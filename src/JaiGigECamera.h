@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "StringList.h"
 #include "BaseCamera.h"
 
 #define JAI_SDK_DYNAMIC_LOAD 1
@@ -31,6 +32,8 @@ public:
 
 	virtual bool getShutterValue(long *current, long *min, long *max);
 	virtual bool setShutterValue(long val);
+
+	StringList* getFeatureList(HWND hWnd);
 
 	int _imageCount;
 
