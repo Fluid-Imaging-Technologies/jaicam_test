@@ -26,6 +26,7 @@ Context ctx;
 JaiGigECamera *cam;
 HANDLE hStopEvent;
 
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, 
 					int cmdShow)
 {
@@ -33,10 +34,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	memset(&msg, 0, sizeof(MSG));
 
+	if (!gMilVars.getApplicationID())
+		return 0;
+
 	if (!InitApplication(hInstance, cmdShow))
 		return 0;
 	
-
 	while (GetMessage(&msg, (HWND) NULL, 0, 0)) {
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
@@ -44,7 +47,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
 	if (cam)
 		delete cam;
-		
+	
+	gMilVars.releaseSystemID();
+
 	return msg.wParam;
 }
 
@@ -192,7 +197,7 @@ void streamOn(HWND hWnd)
 {
 	if (!cam)
 		return;
-
+	
 	if (!cam->startImageGrabThread()) {
 		MessageBox(hWnd, "startImageGrabThread() failed", "Error", MB_OK);
 		return;

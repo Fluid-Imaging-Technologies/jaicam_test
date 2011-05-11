@@ -11,6 +11,10 @@
 
 #include <Jai_Factory_Dynamic.h>
 
+// only define one of these
+//#define SHOW_JAI_WINDOW
+#define SHOW_MIL_WINDOW
+
 #define BAYER_GAIN_RED 0
 #define BAYER_GAIN_GREEN 1
 #define BAYER_GAIN_BLUE 2
@@ -38,12 +42,27 @@ JaiGigECamera::JaiGigECamera(int engNum) : BaseCamera(engNum)
 	_bayerGain[BAYER_GAIN_GREEN] = 0x01000;
 	_bayerGain[BAYER_GAIN_BLUE] = 0x01000;
 
+	_milDisplay = 0;
+	_milImageBuf = 0;
+
+	memset(&_rgbBuff, 0, sizeof(_rgbBuff));
+
 	InitializeCriticalSection(&_csCopyImage);
 }
 
 JaiGigECamera::~JaiGigECamera() 
 {
 	freeCamera();
+
+	if (_milDisplay) {
+		MdispFree(_milDisplay);
+		_milDisplay = 0;
+	}
+
+	if (_milImageBuf) {
+		MbufFree(_milImageBuf);
+		_milImageBuf = 0;
+	}
 
 	DeleteCriticalSection(&_csCopyImage);
 }
@@ -163,34 +182,40 @@ bool JaiGigECamera::freeCamera()
 
 void JaiGigECamera::imageStreamCallback(J_tIMAGE_INFO *pAqImageInfo)
 {
-	J_STATUS_TYPE result;
-	J_tIMAGE_INFO rgbBuff;
-
     ++_imageCount;
 
-	if (J_ST_SUCCESS == J_Image_Malloc(pAqImageInfo, &rgbBuff)) {
-		result = J_Image_FromRawToImageEx(pAqImageInfo, 
-											&rgbBuff,
-											BAYER_EXTEND,
-											_bayerGain[BAYER_GAIN_RED], 
-											_bayerGain[BAYER_GAIN_GREEN], 
-											_bayerGain[BAYER_GAIN_BLUE]);
-
-
-		if (result == J_ST_SUCCESS) {
-			if (_hView)
-				J_Image_ShowImage(_hView, &rgbBuff);
-		}
-		
-		J_Image_Free(&rgbBuff);
+	if (!_rgbBuff.pImageBuffer) {
+		if (J_ST_SUCCESS != J_Image_Malloc(pAqImageInfo, &_rgbBuff))
+			return;
 	}
-	else {
-		if (_hView)
-			J_Image_ShowImage(_hView, pAqImageInfo);	
-	}
+
+	if (J_ST_SUCCESS != J_Image_FromRawToImageEx(pAqImageInfo, 
+												&_rgbBuff,
+												BAYER_EXTEND,
+												_bayerGain[BAYER_GAIN_RED], 
+												_bayerGain[BAYER_GAIN_GREEN], 
+												_bayerGain[BAYER_GAIN_BLUE]))
+		return;
+
+#if defined (SHOW_JAI_WINDOW)
+	J_Image_ShowImage(_hView, &_rgbBuff);
+#elif defined (SHOW_MIL_WINDOW)
+	MbufPutColor(_milImageBuf, M_PACKED | M_BGR24, M_ALL_BANDS, _rgbBuff.pImageBuffer);
+#endif
 }
 
 bool JaiGigECamera::openViewWindow()
+{
+#if defined (SHOW_JAI_WINDOW)
+	return initializeJaiWindow();
+#elif defined (SHOW_MIL_WINDOW)
+	return initializeMILWindow();
+#endif
+
+	return true;
+}
+
+bool JaiGigECamera::initializeJaiWindow()
 {
 	J_STATUS_TYPE result;
 	SIZE sz;
@@ -205,8 +230,41 @@ bool JaiGigECamera::openViewWindow()
 	result = J_Image_OpenViewWindow("Image View", &pt, &sz, &_hView);
 
 	if (result != J_ST_SUCCESS) {
-		MessageBox(0, "Could not open view window", "Error", MB_OK);
+		MessageBox(0, "Could not open JAI view window", "Error", MB_OK);
 		return false;
+	}
+
+	return true;
+}
+
+bool JaiGigECamera::initializeMILWindow()
+{
+	if (!_milImageBuf) {
+		_milImageBuf = MbufAllocColor(M_DEFAULT_HOST,
+									3,
+									gCameraDB[_camera_id]._defaultWidth,
+									gCameraDB[_camera_id]._defaultHeight,
+									8 + M_UNSIGNED,
+									M_IMAGE | M_DISP | M_BGR24 | M_PACKED,
+									M_NULL);
+
+		if (!_milImageBuf)
+			return false;
+
+		MbufClear(_milImageBuf, 0.0);
+	}
+
+	if (!_milDisplay) {
+		_milDisplay = MdispAlloc(M_DEFAULT_HOST, 
+							M_DEFAULT, 
+							M_DEF_DISPLAY_FORMAT, 
+							M_DEFAULT, 
+							M_NULL);
+
+		if (!_milDisplay)
+			return false;
+
+		MdispSelectWindow(_milDisplay, _milImageBuf, NULL);	
 	}
 
 	return true;
@@ -277,6 +335,7 @@ bool JaiGigECamera::stopImageGrabThread()
         _hStreamThread = NULL;
     }
 
+#if defined (SHOW_JAI_WINDOW)
 	if (_hView) {
 		result = J_Image_CloseViewWindow(_hView);
 		
@@ -285,6 +344,10 @@ bool JaiGigECamera::stopImageGrabThread()
 
 		_hView = NULL;
 	}
+#endif
+
+	if (_rgbBuff.pImageBuffer)
+		J_Image_Free(&_rgbBuff);
 
 	return true;
 }

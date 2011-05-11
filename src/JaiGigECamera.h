@@ -41,6 +41,10 @@ private:
 
 	// for testing
 	bool openViewWindow();
+	bool initializeJaiWindow();
+	bool initializeMILWindow();
+	MIL_ID _milImageBuf;
+	MIL_ID _milDisplay;
 
 	CRITICAL_SECTION _csCopyImage;
 	FACTORY_HANDLE _hFactory;
