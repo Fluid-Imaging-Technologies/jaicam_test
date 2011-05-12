@@ -40,11 +40,10 @@ public:
 private:
 	bool applyNonConfigurableSettings();
 	void imageStreamCallback(J_tIMAGE_INFO * pAqImageInfo);
+	void imageStreamCallback2(J_tIMAGE_INFO * pAqImageInfo);
 	uint32_t convertBayerGainToJaiFormat(double bayerGain);
 
 	// for testing
-	bool openViewWindow();
-	bool initializeJaiWindow();
 	bool initializeMILWindow();
 	MIL_ID _milImageBuf;
 	MIL_ID _milDisplay;
@@ -54,7 +53,6 @@ private:
 	char _jCameraId[J_CAMERA_ID_SIZE];
 	CAM_HANDLE _hCamera;
 	THRD_HANDLE _hStreamThread;
-	VIEW_HANDLE _hView;
 	bool _imageReady;
 	uint32_t _bayerGain[3];
 	J_tIMAGE_INFO _rgbBuff;

@@ -11,9 +11,6 @@
 
 #include <Jai_Factory_Dynamic.h>
 
-// only define one of these
-//#define SHOW_JAI_WINDOW
-#define SHOW_MIL_WINDOW
 
 #define BAYER_GAIN_RED 0
 #define BAYER_GAIN_GREEN 1
@@ -34,7 +31,6 @@ JaiGigECamera::JaiGigECamera(int engNum) : BaseCamera(engNum)
 	_hCamera = 0;
 	memset(_jCameraId, 0, sizeof(_jCameraId));
 	_hStreamThread = 0;
-	_hView = 0;
 	_imageReady = false;
 	_hGainNode = 0;
     _hExposureNode = 0;
@@ -194,7 +190,7 @@ bool JaiGigECamera::freeCamera()
 void JaiGigECamera::imageStreamCallback(J_tIMAGE_INFO *pAqImageInfo)
 {
     ++_imageCount;
-
+	
 	if (!_rgbBuff.pImageBuffer) {
 		if (J_ST_SUCCESS != J_Image_Malloc(pAqImageInfo, &_rgbBuff))
 			return;
@@ -208,44 +204,41 @@ void JaiGigECamera::imageStreamCallback(J_tIMAGE_INFO *pAqImageInfo)
 												_bayerGain[BAYER_GAIN_BLUE]))
 		return;
 
-#if defined (SHOW_JAI_WINDOW)
-	J_Image_ShowImage(_hView, &_rgbBuff);
-#elif defined (SHOW_MIL_WINDOW)
 	MbufPutColor(_milImageBuf, M_PACKED | M_BGR24, M_ALL_BANDS, _rgbBuff.pImageBuffer);
-#endif
 }
 
-bool JaiGigECamera::openViewWindow()
-{
-#if defined (SHOW_JAI_WINDOW)
-	return initializeJaiWindow();
-#elif defined (SHOW_MIL_WINDOW)
-	return initializeMILWindow();
-#endif
-
-	return true;
-}
-
-bool JaiGigECamera::initializeJaiWindow()
+void JaiGigECamera::imageStreamCallback2(J_tIMAGE_INFO *pAqImageInfo)
 {
 	J_STATUS_TYPE result;
-	SIZE sz;
-	POINT pt;
+	unsigned char *p, *q;
 
-	sz.cx = gCameraDB[_camera_id]._defaultWidth;
-	sz.cy = gCameraDB[_camera_id]._defaultHeight;
-
-	pt.x = 400;
-	pt.y = 20;
-
-	result = J_Image_OpenViewWindow("Image View", &pt, &sz, &_hView);
-
-	if (result != J_ST_SUCCESS) {
-		MessageBox(0, "Could not open JAI view window", "Error", MB_OK);
-		return false;
+    ++_imageCount;
+	
+	if (!_rgbBuff.pImageBuffer) {
+		if (J_ST_SUCCESS != J_Image_Malloc(pAqImageInfo, &_rgbBuff))
+			return;
 	}
 
-	return true;
+	p = NULL;
+	MbufInquire(_milImageBuf, M_HOST_ADDRESS, &p);
+
+	if (!p)
+		return;
+
+	q = _rgbBuff.pImageBuffer;
+	_rgbBuff.pImageBuffer = p;
+
+	result = J_Image_FromRawToImageEx(pAqImageInfo, 
+										&_rgbBuff,
+										BAYER_EXTEND,
+										_bayerGain[BAYER_GAIN_RED], 
+										_bayerGain[BAYER_GAIN_GREEN], 
+										_bayerGain[BAYER_GAIN_BLUE]);
+
+	_rgbBuff.pImageBuffer = q;
+
+	if (result == J_ST_SUCCESS)
+		MbufControl(_milImageBuf, M_MODIFIED, M_DEFAULT);
 }
 
 bool JaiGigECamera::initializeMILWindow()
@@ -299,7 +292,7 @@ bool JaiGigECamera::startImageGrabThread()
 	_imageReady = false;
 	_imageCount = 0;
 
-	if (!openViewWindow())
+	if (!initializeMILWindow())
 		return false;
 
 	img_size = gCameraDB[_camera_id]._defaultWidth * gCameraDB[_camera_id]._defaultHeight;
